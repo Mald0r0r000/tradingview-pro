@@ -201,7 +201,7 @@ bg_color_gex = "rgba(0, 50, 0, 0.05)" if last_price > zero_gamma else "rgba(50, 
 
 fig = go.Figure()
 
-# 1. Candlestick
+# 1. Candlestick avec hover data détaillé
 fig.add_trace(go.Candlestick(
     x=df.index,
     open=df['open'],
@@ -210,7 +210,12 @@ fig.add_trace(go.Candlestick(
     close=df['close'],
     name="BTCUSDT",
     increasing_line_color='#26a69a',
-    decreasing_line_color='#ef5350'
+    decreasing_line_color='#ef5350',
+    hovertext=[
+        f"O: {o:.2f}<br>H: {h:.2f}<br>L: {l:.2f}<br>C: {c:.2f}<br>V: {v:.0f}" 
+        for o, h, l, c, v in zip(df['open'], df['high'], df['low'], df['close'], df.get('volume', [0]*len(df)))
+    ],
+    hoverinfo='text+x'
 ))
 
 # 2. GEX Walls
@@ -219,7 +224,7 @@ fig.add_hline(
     line_width=3,
     line_color="#9757df",
     line_dash="solid",
-    annotation_text="Call Wall",
+    annotation_text=f"Call Wall: ${call_wall:,.2f}",
     annotation_position="right"
 )
 fig.add_hline(
@@ -227,7 +232,7 @@ fig.add_hline(
     line_width=3,
     line_color="#5bc4c2",
     line_dash="solid",
-    annotation_text="Put Wall",
+    annotation_text=f"Put Wall: ${put_wall:,.2f}",
     annotation_position="right"
 )
 fig.add_hline(
@@ -235,7 +240,7 @@ fig.add_hline(
     line_width=2,
     line_color="#dde0e3",
     line_dash="dash",
-    annotation_text="Zero Gamma",
+    annotation_text=f"Zero Gamma: ${zero_gamma:,.2f}",
     annotation_position="right"
 )
 
@@ -280,15 +285,27 @@ fig.update_layout(
     xaxis=dict(
         showgrid=True,
         gridcolor='rgba(128,128,128,0.1)',
-        color='white'
+        color='white',
+        side='bottom'
     ),
     yaxis=dict(
         showgrid=True,
         gridcolor='rgba(128,128,128,0.1)',
-        color='white'
+        color='white',
+        side='right',  # Axe des prix à droite
+        tickformat=',.2f',  # Format avec virgules et 2 décimales
+        tickprefix='$',  # Préfixe dollar
+        fixedrange=False,  # Permet le zoom
+        autorange=True
     ),
     font=dict(color='white'),
-    hovermode='x unified'
+    hovermode='x unified',
+    hoverlabel=dict(
+        bgcolor='rgba(0,0,0,0.8)',
+        font_size=12,
+        font_family="monospace"
+    ),
+    margin=dict(l=20, r=100, t=40, b=40)  # Plus de marge à droite pour l'axe Y
 )
 
 st.plotly_chart(fig, use_container_width=True)
