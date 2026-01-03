@@ -47,6 +47,9 @@ if "temp_pine_code" not in st.session_state:
 if "temp_python_code" not in st.session_state:
     st.session_state.temp_python_code = ""
 
+if "temp_indicator_name" not in st.session_state:
+    st.session_state.temp_indicator_name = ""
+
 if "ws_running" not in st.session_state:
     st.session_state.ws_running = False
 
@@ -142,6 +145,7 @@ with st.sidebar:
         st.session_state.show_indicator_editor = True
         st.session_state.temp_pine_code = ""
         st.session_state.temp_python_code = ""
+        st.session_state.temp_indicator_name = ""
         st.rerun()
 
 
@@ -155,69 +159,98 @@ if st.session_state.show_indicator_editor:
     st.markdown("---")
     st.subheader("✏️ Éditeur PineScript")
     
+    # Nom de l'indicateur en haut
+    indicator_name = st.text_input(
+        "📝 Nom de l'indicateur *",
+        value=st.session_state.temp_indicator_name,
+        placeholder="Ex: Mon Indicateur Custom",
+        help="Donnez un nom unique à votre indicateur"
+    )
+    st.session_state.temp_indicator_name = indicator_name
+    
     col_edit1, col_edit2 = st.columns(2)
     
     with col_edit1:
-        st.markdown("**Code PineScript**")
+        st.markdown("**📋 Code PineScript**")
+        st.caption("Collez votre code PineScript ci-dessous")
         pine_code = st.text_area(
-            "Entrez votre code PineScript",
+            "Code PineScript",
             value=st.session_state.temp_pine_code,
-            height=300,
-            key="pine_editor"
+            height=350,
+            key="pine_editor",
+            label_visibility="collapsed"
         )
         st.session_state.temp_pine_code = pine_code
-        
-        col_btn1, col_btn2, col_btn3 = st.columns(3)
-        
-        with col_btn1:
-            if st.button("🔄 Convertir"):
-                if pine_code:
-                    converter = PineScriptConverter()
-                    python_code = converter.convert(pine_code)
-                    st.session_state.temp_python_code = python_code
-                    
-                    warnings = converter.get_warnings()
-                    errors = converter.get_errors()
-                    
-                    if errors:
-                        st.error("❌ Erreurs de conversion:")
-                        for err in errors:
-                            st.write(f"- {err}")
-                    
-                    if warnings:
-                        st.warning("⚠️ Avertissements (conversion partielle):")
-                        for warn in warnings:
-                            st.write(f"- {warn}")
-                        st.info("💡 Les indicateurs complexes nécessitent souvent une adaptation manuelle. Vérifiez les commentaires TODO dans le code généré.")
-                    
-                    if not errors:
-                        st.success("✅ Conversion terminée! Vérifiez le code Python.")
-                    
-                    st.rerun()
-        
-        with col_btn2:
-            if st.button("💾 Sauvegarder"):
-                if st.session_state.temp_python_code:
-                    # Demander le nom
-                    ind_name = st.text_input("Nom de l'indicateur:", value="My Indicator")
-                    if ind_name:
-                        st.session_state.indicators[ind_name] = {
-                            'pine_code': st.session_state.temp_pine_code,
-                            'python_code': st.session_state.temp_python_code,
-                            'enabled': True
-                        }
-                        st.session_state.show_indicator_editor = False
-                        st.success(f"✅ Indicateur '{ind_name}' sauvegardé!")
-                        st.rerun()
-        
-        with col_btn3:
-            if st.button("❌ Fermer"):
-                st.session_state.show_indicator_editor = False
-                st.rerun()
     
     with col_edit2:
-        st.markdown("**Code Python Généré**")
-        st.code(st.session_state.temp_python_code, language="python")
+        st.markdown("**🐍 Code Python Généré** (lecture seule)")
+        st.caption("Le code Python sera généré automatiquement")
+        if st.session_state.temp_python_code:
+            st.code(st.session_state.temp_python_code, language="python", line_numbers=False)
+        else:
+            st.info("👈 Collez votre code PineScript et cliquez sur 'Convertir'")
+    
+    # Boutons d'action
+    st.markdown("")
+    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([2, 2, 2, 1])
+    
+    with col_btn1:
+        convert_disabled = not pine_code
+        if st.button("🔄 Convertir", use_container_width=True, disabled=convert_disabled, type="primary"):
+            converter = PineScriptConverter()
+            python_code = converter.convert(pine_code)
+            st.session_state.temp_python_code = python_code
+            
+            warnings = converter.get_warnings()
+            errors = converter.get_errors()
+            
+            if errors:
+                st.error("❌ Erreurs de conversion")
+                for err in errors[:3]:  # Limiter à 3 erreurs
+                    st.write(f"- {err}")
+            
+            if warnings:
+                st.warning("⚠️ Conversion partielle")
+                for warn in warnings[:3]:  # Limiter à 3 warnings
+                    st.write(f"- {warn}")
+                st.info("💡 Vérifiez les commentaires TODO dans le code généré")
+            
+            if not errors:
+                st.success("✅ Conversion terminée!")
+            
+            st.rerun()
+    
+    with col_btn2:
+        save_disabled = not st.session_state.temp_python_code or not indicator_name
+        if st.button("💾 Sauvegarder", use_container_width=True, disabled=save_disabled, type="secondary"):
+            st.session_state.indicators[indicator_name] = {
+                'pine_code': st.session_state.temp_pine_code,
+                'python_code': st.session_state.temp_python_code,
+                'enabled': True
+            }
+            st.session_state.show_indicator_editor = False
+            st.success(f"✅ '{indicator_name}' sauvegardé!")
+            time.sleep(0.5)
+            st.rerun()
+    
+    with col_btn3:
+        if st.button("🧪 Tester", use_container_width=True, disabled=save_disabled):
+            # Tester l'indicateur sans sauvegarder
+            try:
+                df = st.session_state.data_manager.get_dataframe(st.session_state.current_timeframe)
+                if len(df) > 0:
+                    executor = IndicatorExecutor()
+                    results = executor.execute(st.session_state.temp_python_code, df)
+                    st.success(f"✅ Test réussi! {len(results)} série(s) détectée(s)")
+                else:
+                    st.warning("⚠️ Pas assez de données pour tester")
+            except Exception as e:
+                st.error(f"❌ Erreur: {str(e)[:100]}")
+    
+    with col_btn4:
+        if st.button("❌", use_container_width=True, help="Fermer l'éditeur"):
+            st.session_state.show_indicator_editor = False
+            st.rerun()
 
     st.markdown("---")
 
