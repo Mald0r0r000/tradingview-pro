@@ -58,10 +58,13 @@ class BitgetWebSocketClient:
         self.candles_buffer = deque(maxlen=500)
         
     async def fetch_historical_candles(self):
-        """Récupère l'historique des bougies via REST API"""
+        """Récupère l'historique des bougies via REST API - Fait 2 appels pour 1000 bougies"""
         try:
             url = f"{self.REST_URL}/api/v2/mix/market/candles"
+            all_candles = []
             
+            # Bitget limite à 500 max par appel, on fait 2 appels
+            # 1er appel: 500 bougies les plus récentes
             params = {
                 "symbol": f"{self.symbol}USDT_UMCBL",
                 "productType": "USDT-FUTURES", 
@@ -69,44 +72,60 @@ class BitgetWebSocketClient:
                 "limit": "500"
             }
             
-            logger.info(f"Fetching {self.timeframe} historical data...")
+            logger.info(f"Fetching {self.timeframe} historical data (call 1/2)...")
             
             async with aiohttp.ClientSession() as session:
+                # Premier appel - 500 bougies récentes
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
                         
                         if data.get("code") == "00000" and data.get("data"):
-                            candles = data["data"]
-                            logger.info(f"✅ Loaded {len(candles)} historical candles")
+                            candles_batch1 = data["data"]
+                            all_candles.extend(candles_batch1)
+                            logger.info(f"✅ Batch 1: {len(candles_batch1)} candles")
                             
-                            # Format: [timestamp, open, high, low, close, volume, ...]
-                            # Les données sont du plus récent au plus ancien, on reverse
-                            for candle_raw in reversed(candles):
-                                try:
-                                    candle = {
-                                        "time": int(candle_raw[0]) // 1000,
-                                        "open": float(candle_raw[1]),
-                                        "high": float(candle_raw[2]),
-                                        "low": float(candle_raw[3]),
-                                        "close": float(candle_raw[4]),
-                                        "volume": float(candle_raw[5]) if len(candle_raw) > 5 else 0
-                                    }
-                                    
-                                    self.candles_buffer.append(candle)
-                                    
-                                    if self.on_message:
-                                        self.on_message(candle)
-                                        
-                                except (IndexError, ValueError) as e:
-                                    logger.warning(f"Error parsing candle: {e}")
-                        else:
-                            logger.error(f"API error: {data.get('msg')}")
+                            # Deuxième appel - 500 bougies avant
+                            if len(candles_batch1) > 0:
+                                # Prendre le timestamp de la bougie la plus ancienne du 1er batch
+                                oldest_time = int(candles_batch1[-1][0])  # Timestamp en ms
+                                
+                                params["endTime"] = str(oldest_time - 1)  # Avant le 1er batch
+                                
+                                logger.info(f"Fetching older data (call 2/2)...")
+                                async with session.get(url, params=params) as response2:
+                                    if response2.status == 200:
+                                        data2 = await response2.json()
+                                        if data2.get("code") == "00000" and data2.get("data"):
+                                            candles_batch2 = data2["data"]
+                                            all_candles.extend(candles_batch2)
+                                            logger.info(f"✅ Batch 2: {len(candles_batch2)} candles")
+                        
+                        # Traiter toutes les bougies (du plus ancien au plus récent)
+                        logger.info(f"✅ Total loaded: {len(all_candles)} candles")
+                        
+                        # Les données sont du plus récent au plus ancien, on reverse
+                        for candle_data in reversed(all_candles):
+                            try:
+                                candle = {
+                                    "time": int(candle_data[0]) // 1000,  # ms → secondes
+                                    "open": float(candle_data[1]),
+                                    "high": float(candle_data[2]),
+                                    "low": float(candle_data[3]),
+                                    "close": float(candle_data[4]),
+                                    "volume": float(candle_data[5]) if len(candle_data) > 5 else 0
+                                }
+                                self.candles_buffer.append(candle) # Add to buffer
+                                if self.on_message:
+                                    self.on_message(candle)
+                            except (IndexError, ValueError) as e:
+                                logger.warning(f"Error parsing candle: {e}")
+                                continue
                     else:
-                        logger.error(f"HTTP {response.status}")
+                        logger.error(f"HTTP {response.status} - Using limit=500 instead")
                         
         except Exception as e:
-            logger.error(f"Failed to fetch historical data: {e}")
+            logger.error(f"Error fetching historical candles: {e}")
     
     async def connect(self):
         """Établit la connexion WebSocket et subscribe au channel"""

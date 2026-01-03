@@ -13,7 +13,7 @@ class DataManager:
     Stocke les bougies et fournit des DataFrames pour les calculs d'indicateurs
     """
     
-    def __init__(self, max_candles: int = 500):
+    def __init__(self, max_candles: int = 1000):
         """
         Args:
             max_candles: Nombre maximum de bougies à conserver par timeframe

@@ -76,13 +76,22 @@ def timeframe_selector(key_suffix=""):
         AVAILABLE_TIMEFRAMES,
         index=AVAILABLE_TIMEFRAMES.index(st.session_state.current_timeframe),
         key=f"tf_selector_{key_suffix}",
-        help="Changer le timeframe redémarre la connexion WebSocket"
+        help="Changer le timeframe recharge l'historique et redémarre le WebSocket"
     )
     
-    # Si le timeframe a changé, redémarrer le WebSocket
+    # Si le timeframe a changé, recharger l'historique et redémarrer le WebSocket
     if selected_tf != st.session_state.current_timeframe:
         st.session_state.current_timeframe = selected_tf
+        
+        # 1. Clear les anciennes données de ce timeframe
+        if "data_manager" in st.session_state:
+            st.session_state.data_manager.clear(selected_tf)
+        
+        # 2. Redémarrer le WebSocket (qui va charger l'historique via REST)
         start_websocket(selected_tf)
+        
+        st.success(f"✅ Changement vers {selected_tf} - Chargement de l'historique...")
+        time.sleep(0.5)  # Petit délai pour laisser le temps au WebSocket de se connecter
         st.rerun()
     
     return selected_tf
