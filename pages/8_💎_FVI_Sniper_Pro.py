@@ -138,14 +138,20 @@ for i in range(2, len(df)):
         })
 
 # Vérifier mitigation (remplissage complet)
+# CORRECTION: On vérifie SEULEMENT après la création (N+x), pas avant
 if mitigate:
     for fvg in fvg_boxes:
-        for j in range(fvg['start_bar'], len(df)):
+        # Vérifier uniquement les bougies APRÈS la création du FVG
+        start_check = fvg['start_bar'] + 1  # Commencer APRÈS la création
+        
+        for j in range(start_check, len(df)):
             if fvg['is_bull']:
+                # Bull FVG rempli si le prix REVIENT en bas et touche la limite
                 if df['low'].iloc[j] <= fvg['limit_level']:
                     fvg['mitigated'] = True
                     break
             else:
+                # Bear FVG rempli si le prix REVIENT en haut et touche la limite
                 if df['high'].iloc[j] >= fvg['limit_level']:
                     fvg['mitigated'] = True
                     break
