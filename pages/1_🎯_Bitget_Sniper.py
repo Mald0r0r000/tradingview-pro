@@ -244,7 +244,7 @@ fig.add_hline(
     annotation_position="right"
 )
 
-# 3. Lignes de Liquidation
+# 3. Lignes de Liquidation avec Hover Interactif
 for line in all_lines:
     # Couleur
     base_color = color_longs if line['is_long'] else color_shorts
@@ -266,6 +266,7 @@ for line in all_lines:
     # Opacité selon statut
     opacity = 0.7 if line['active'] else 0.3
     
+    # Dessiner la ligne (shape)
     fig.add_shape(
         type="line",
         x0=line['start_idx'],
@@ -275,6 +276,30 @@ for line in all_lines:
         line=dict(color=base_color, width=width, dash=dash),
         opacity=opacity
     )
+    
+    # Ajouter une trace invisible pour le hover (au milieu de la ligne)
+    mid_x = (line['start_idx'] + line['end_idx']) / 2
+    
+    # Texte du hover
+    direction = "LONG 🟢" if line['is_long'] else "SHORT 🔴"
+    status_text = "✅ ACTIVE" if line['active'] else "❌ TOUCHÉE"
+    hover_text = (
+        f"<b>{direction} Liquidation {line['leverage']}x</b><br>"
+        f"Prix: <b>${line['price']:,.2f}</b><br>"
+        f"Statut: {status_text}<br>"
+        f"Zone: {'Entrée/SL' if line['is_long'] else 'TP'}"
+    )
+    
+    fig.add_trace(go.Scatter(
+        x=[mid_x],
+        y=[line['price']],
+        mode='markers',
+        marker=dict(size=8, color=base_color, opacity=0),  # Invisible
+        hovertext=hover_text,
+        hoverinfo='text',
+        showlegend=False,
+        name=''
+    ))
 
 # Configuration du layout
 fig.update_layout(
