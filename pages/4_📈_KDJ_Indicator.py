@@ -174,34 +174,78 @@ fig.add_trace(go.Candlestick(
 
 # 2. KDJ Oscillator (Subplot 2)
 
-# K/D Cloud (fill area)
-# D'abord tracer K et D de manière invisible pour le fill
-fig.add_trace(go.Scatter(
-    x=df.index,
-    y=df['k'],
-    name='K',
-    line=dict(width=0),
-    showlegend=False,
-    hoverinfo='skip'
-), row=2, col=1)
+# K/D Cloud - Créer des zones séparées pour bull et bear
+# Identifier les zones où K > D (bull) et K < D (bear)
+df_display = df.copy()
+df_display['k_above_d'] = df_display['k'] > df_display['d']
 
-fig.add_trace(go.Scatter(
-    x=df.index,
-    y=df['d'],
-    name='D',
-    fill='tonexty',
-    fillcolor=np.where(df['k'] > df['d'], color_kd_bull + '66', color_kd_bear + '66')[0],  # 66 = 40% opacity en hex
-    line=dict(width=0),
-    showlegend=False,
-    hoverinfo='skip'
-), row=2, col=1)
+# Créer des segments pour les fills
+# Pour chaque changement de direction, on crée un nouveau segment
+segments = []
+current_segment = {'bull': df_display['k_above_d'].iloc[0], 'start': 0}
 
-# Maintenant tracer K et D visibles
+for i in range(1, len(df_display)):
+    if df_display['k_above_d'].iloc[i] != current_segment['bull']:
+        # Fin du segment précédent
+        segments.append({
+            'bull': current_segment['bull'],
+            'start': current_segment['start'],
+            'end': i
+        })
+        current_segment = {'bull': df_display['k_above_d'].iloc[i], 'start': i}
+
+# Ajouter le dernier segment
+segments.append({
+    'bull': current_segment['bull'],
+    'start': current_segment['start'],
+    'end': len(df_display)
+})
+
+# Tracer les fills pour chaque segment
+for seg in segments:
+    start_idx = seg['start']
+    end_idx = seg['end']
+    segment_df = df_display.iloc[start_idx:end_idx]
+    
+    if len(segment_df) > 0:
+        fill_color = color_kd_bull if seg['bull'] else color_kd_bear
+        # Convertir hex en rgba avec opacité
+        if fill_color.startswith('#'):
+            r = int(fill_color[1:3], 16)
+            g = int(fill_color[3:5], 16)
+            b = int(fill_color[5:7], 16)
+            fill_color_rgba = f'rgba({r},{g},{b},0.4)'
+        else:
+            fill_color_rgba = fill_color
+        
+        # Trace pour K
+        fig.add_trace(go.Scatter(
+            x=segment_df.index,
+            y=segment_df['k'],
+            showlegend=False,
+            line=dict(width=0),
+            hoverinfo='skip',
+            mode='lines'
+        ), row=2, col=1)
+        
+        # Trace pour D avec fill
+        fig.add_trace(go.Scatter(
+            x=segment_df.index,
+            y=segment_df['d'],
+            fill='tonexty',
+            fillcolor=fill_color_rgba,
+            showlegend=False,
+            line=dict(width=0),
+            hoverinfo='skip',
+            mode='lines'
+        ), row=2, col=1)
+
+# Maintenant tracer K et D visibles par-dessus
 fig.add_trace(go.Scatter(
     x=df.index,
     y=df['k'],
     name='K Line',
-    line=dict(color=color_kd_bull, width=1),
+    line=dict(color=color_kd_bull, width=1.5),
     showlegend=True
 ), row=2, col=1)
 
@@ -209,7 +253,7 @@ fig.add_trace(go.Scatter(
     x=df.index,
     y=df['d'],
     name='D Line',
-    line=dict(color=color_kd_bear, width=1),
+    line=dict(color=color_kd_bear, width=1.5),
     showlegend=True
 ), row=2, col=1)
 
