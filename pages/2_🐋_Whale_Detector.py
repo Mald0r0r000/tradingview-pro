@@ -10,6 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data_manager import DataManager
+from components.timeframe_selector import timeframe_selector
 
 st.set_page_config(layout="wide", page_title="Whale Detector")
 
@@ -32,6 +33,10 @@ st.caption("Détection d'anomalies de volume - Identifier les gros ordres instit
 # 1. PARAMÈTRES (SIDEBAR)
 # ==========================================
 with st.sidebar:
+    # Sélecteur de timeframe
+    current_tf = timeframe_selector("whale_detector")
+    
+    st.markdown("---")
     st.header("⚙️ Configuration Whale Detector")
     
     lookback = st.number_input(

@@ -10,6 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data_manager import DataManager
+from components.timeframe_selector import timeframe_selector
 
 st.set_page_config(layout="wide", page_title="Bitget Sniper + GEX")
 
@@ -33,6 +34,10 @@ st.caption("Analyse des liquidations et niveaux GEX avec données temps réel")
 # 1. PARAMÈTRES (SIDEBAR)
 # ==========================================
 with st.sidebar:
+    # Sélecteur de timeframe
+    current_tf = timeframe_selector("bitget_sniper")
+    
+    st.markdown("---")
     st.header("📊 GEX Levels (Daily)")
     st.caption("Mettez à jour ces niveaux quotidiennement")
     call_wall = st.number_input("Call Wall", value=100000.0, format="%.2f")
