@@ -183,10 +183,18 @@ if st.session_state.show_indicator_editor:
         st.session_state.temp_pine_code = pine_code
     
     with col_edit2:
-        st.markdown("**🐍 Code Python Généré** (lecture seule)")
-        st.caption("Le code Python sera généré automatiquement")
+        st.markdown("**🐍 Code Python Généré** (éditable)")
+        st.caption("Modifiable pour ajustements manuels")
         if st.session_state.temp_python_code:
-            st.code(st.session_state.temp_python_code, language="python", line_numbers=False)
+            python_code_edited = st.text_area(
+                "Code Python",
+                value=st.session_state.temp_python_code,
+                height=350,
+                key="python_editor",
+                label_visibility="collapsed"
+            )
+            # Mettre à jour si modifié
+            st.session_state.temp_python_code = python_code_edited
         else:
             st.info("👈 Collez votre code PineScript et cliquez sur 'Convertir'")
     
