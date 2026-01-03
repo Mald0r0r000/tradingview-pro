@@ -1,15 +1,24 @@
 # 🕯️ TradingView Pro - Application de Charting avec Bitget
 
-Application Streamlit de charting en temps réel utilisant l'API WebSocket de Bitget avec support multi-timeframe et convertisseur PineScript intégré.
+Application Streamlit de charting en temps réel utilisant l'API WebSocket de Bitget avec support multi-timeframe, convertisseur PineScript intégré, et pages spécialisées pour analyses avancées.
 
 ## 🚀 Fonctionnalités
 
+### Page Principale (Home)
 - ✅ **Connexion WebSocket Bitget** - Données en temps réel pour BTCUSDT.P
 - ✅ **Multi-Timeframe** - Support de 1m à 1M (1m, 3m, 5m, 15m, 30m, 1H, 4H, 1D, 1W, 1M)
 - ✅ **Convertisseur PineScript** - Convertit vos indicateurs PineScript en Python
 - ✅ **Éditeur Intégré** - Créez et testez vos indicateurs directement dans l'UI
 - ✅ **Graphique Professionnel** - Powered by TradingView Lightweight Charts
 - ✅ **Reconnexion Automatique** - Gestion intelligente des déconnexions
+
+### Page Bitget Sniper 🎯
+- ✅ **Liquidation Levels** - Calcul automatique des niveaux de liquidation (125x, 100x, 50x, 25x)
+- ✅ **Logique Pac-Man** - Lignes qui disparaissent quand touchées par le prix
+- ✅ **GEX Integration** - Call Wall, Put Wall, Zero Gamma
+- ✅ **Multi-Tier Analysis** - 3 niveaux d'analyse (Scalping, Intraday, Swing)
+- ✅ **Visualisation Plotly** - Graphiques interactifs avancés
+- ✅ **Données Temps Réel** - Utilise le même WebSocket que la page principale
 
 ## 📦 Installation
 
@@ -37,10 +46,14 @@ Application Streamlit de charting en temps réel utilisant l'API WebSocket de Bi
 ### Lancer l'application
 
 ```bash
-streamlit run app.py
+streamlit run Home.py
 ```
 
 L'application s'ouvrira dans votre navigateur à `http://localhost:8501`
+
+**Navigation**: Utilisez la sidebar pour basculer entre les pages :
+- 🏠 **Home** : Graphique principal avec indicateurs personnalisés
+- 🎯 **Bitget Sniper** : Analyse des liquidations et GEX
 
 ### Utiliser le Convertisseur PineScript
 
