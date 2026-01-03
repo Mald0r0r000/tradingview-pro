@@ -176,12 +176,23 @@ if st.session_state.show_indicator_editor:
                     python_code = converter.convert(pine_code)
                     st.session_state.temp_python_code = python_code
                     
-                    if converter.get_errors():
-                        st.warning("⚠️ Conversion avec avertissements:")
-                        for err in converter.get_errors():
+                    warnings = converter.get_warnings()
+                    errors = converter.get_errors()
+                    
+                    if errors:
+                        st.error("❌ Erreurs de conversion:")
+                        for err in errors:
                             st.write(f"- {err}")
-                    else:
-                        st.success("✅ Conversion réussie!")
+                    
+                    if warnings:
+                        st.warning("⚠️ Avertissements (conversion partielle):")
+                        for warn in warnings:
+                            st.write(f"- {warn}")
+                        st.info("💡 Les indicateurs complexes nécessitent souvent une adaptation manuelle. Vérifiez les commentaires TODO dans le code généré.")
+                    
+                    if not errors:
+                        st.success("✅ Conversion terminée! Vérifiez le code Python.")
+                    
                     st.rerun()
         
         with col_btn2:
