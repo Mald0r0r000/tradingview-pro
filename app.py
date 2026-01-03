@@ -1,0 +1,335 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import asyncio
+import threading
+import queue
+import time
+from streamlit_lightweight_charts import renderLightweightCharts
+
+from bitget_ws_client import BitgetWebSocketClient
+from data_manager import DataManager
+from pine_converter import PineScriptConverter
+from indicator_executor import IndicatorExecutor
+
+st.set_page_config(layout="wide", page_title="TradingView Pro")
+
+# --- Configuration ---
+SYMBOL = "BTCUSDT"
+AVAILABLE_TIMEFRAMES = ["1m", "3m", "5m", "15m", "30m", "1H", "4H", "1D", "1W", "1M"]
+
+# --- Session State Initialization ---
+if "data_manager" not in st.session_state:
+    st.session_state.data_manager = DataManager(max_candles=500)
+
+if "ws_client" not in st.session_state:
+    st.session_state.ws_client = None
+
+if "ws_thread" not in st.session_state:
+    st.session_state.ws_thread = None
+
+if "message_queue" not in st.session_state:
+    st.session_state.message_queue = queue.Queue()
+
+if "current_timeframe" not in st.session_state:
+    st.session_state.current_timeframe = "1m"
+
+if "indicators" not in st.session_state:
+    # Format: {name: {'pine_code': str, 'python_code': str, 'enabled': bool}}
+    st.session_state.indicators = {}
+
+if "show_indicator_editor" not in st.session_state:
+    st.session_state.show_indicator_editor = False
+
+if "temp_pine_code" not in st.session_state:
+    st.session_state.temp_pine_code = ""
+
+if "temp_python_code" not in st.session_state:
+    st.session_state.temp_python_code = ""
+
+if "ws_running" not in st.session_state:
+    st.session_state.ws_running = False
+
+
+# --- WebSocket Background Thread ---
+def websocket_thread(timeframe: str, message_queue: queue.Queue):
+    """Thread pour exécuter le WebSocket en arrière-plan"""
+    def on_candle(candle):
+        # Envoyer la bougie à la queue
+        message_queue.put({"type": "candle", "data": candle, "timeframe": timeframe})
+    
+    # Créer le client
+    client = BitgetWebSocketClient(
+        symbol=SYMBOL,
+        timeframe=timeframe,
+        on_message=on_candle
+    )
+    
+    # Exécuter la boucle asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        loop.run_until_complete(client.run())
+    except Exception as e:
+        st.error(f"WebSocket error: {e}")
+    finally:
+        loop.close()
+
+
+def start_websocket(timeframe: str):
+    """Démarre le WebSocket dans un thread séparé"""
+    if st.session_state.ws_thread and st.session_state.ws_thread.is_alive():
+        # Arrêter l'ancien thread (simplification, en production utiliser un système plus propre)
+        st.session_state.ws_running = False
+        time.sleep(1)
+    
+    st.session_state.ws_running = True
+    st.session_state.ws_thread = threading.Thread(
+        target=websocket_thread,
+        args=(timeframe, st.session_state.message_queue),
+        daemon=True
+    )
+    st.session_state.ws_thread.start()
+
+
+# --- UI ---
+st.title("🕯️ TradingView Pro - Bitget Live")
+
+# --- Sidebar ---
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    
+    # Sélection du timeframe
+    selected_timeframe = st.selectbox(
+        "Timeframe",
+        AVAILABLE_TIMEFRAMES,
+        index=AVAILABLE_TIMEFRAMES.index(st.session_state.current_timeframe)
+    )
+    
+    # Si le timeframe a changé
+    if selected_timeframe != st.session_state.current_timeframe:
+        st.session_state.current_timeframe = selected_timeframe
+        # Redémarrer le WebSocket
+        start_websocket(selected_timeframe)
+        st.rerun()
+    
+    st.markdown("---")
+    
+    # Indicateurs personnalisés
+    st.header("📊 Indicateurs")
+    
+    # Liste des indicateurs
+    if st.session_state.indicators:
+        for ind_name, ind_data in st.session_state.indicators.items():
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                enabled = st.checkbox(
+                    ind_name,
+                    value=ind_data.get('enabled', True),
+                    key=f"ind_{ind_name}"
+                )
+                st.session_state.indicators[ind_name]['enabled'] = enabled
+            with col2:
+                if st.button("🗑️", key=f"del_{ind_name}"):
+                    del st.session_state.indicators[ind_name]
+                    st.rerun()
+    else:
+        st.info("Aucun indicateur ajouté")
+    
+    # Bouton pour ajouter un indicateur
+    if st.button("➕ Nouvel Indicateur"):
+        st.session_state.show_indicator_editor = True
+        st.session_state.temp_pine_code = ""
+        st.session_state.temp_python_code = ""
+        st.rerun()
+
+
+# --- Main Area ---
+# Démarrer le WebSocket si pas déjà démarré
+if not st.session_state.ws_running:
+    start_websocket(st.session_state.current_timeframe)
+
+# --- Éditeur d'Indicateur (Modal) ---
+if st.session_state.show_indicator_editor:
+    st.markdown("---")
+    st.subheader("✏️ Éditeur PineScript")
+    
+    col_edit1, col_edit2 = st.columns(2)
+    
+    with col_edit1:
+        st.markdown("**Code PineScript**")
+        pine_code = st.text_area(
+            "Entrez votre code PineScript",
+            value=st.session_state.temp_pine_code,
+            height=300,
+            key="pine_editor"
+        )
+        st.session_state.temp_pine_code = pine_code
+        
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
+        
+        with col_btn1:
+            if st.button("🔄 Convertir"):
+                if pine_code:
+                    converter = PineScriptConverter()
+                    python_code = converter.convert(pine_code)
+                    st.session_state.temp_python_code = python_code
+                    
+                    if converter.get_errors():
+                        st.warning("⚠️ Conversion avec avertissements:")
+                        for err in converter.get_errors():
+                            st.write(f"- {err}")
+                    else:
+                        st.success("✅ Conversion réussie!")
+                    st.rerun()
+        
+        with col_btn2:
+            if st.button("💾 Sauvegarder"):
+                if st.session_state.temp_python_code:
+                    # Demander le nom
+                    ind_name = st.text_input("Nom de l'indicateur:", value="My Indicator")
+                    if ind_name:
+                        st.session_state.indicators[ind_name] = {
+                            'pine_code': st.session_state.temp_pine_code,
+                            'python_code': st.session_state.temp_python_code,
+                            'enabled': True
+                        }
+                        st.session_state.show_indicator_editor = False
+                        st.success(f"✅ Indicateur '{ind_name}' sauvegardé!")
+                        st.rerun()
+        
+        with col_btn3:
+            if st.button("❌ Fermer"):
+                st.session_state.show_indicator_editor = False
+                st.rerun()
+    
+    with col_edit2:
+        st.markdown("**Code Python Généré**")
+        st.code(st.session_state.temp_python_code, language="python")
+
+    st.markdown("---")
+
+
+# --- Graphique Principal ---
+@st.fragment(run_every=1)
+def render_chart():
+    """Rendu du graphique avec mise à jour temps réel"""
+    
+    # Lire les messages de la queue
+    try:
+        while not st.session_state.message_queue.empty():
+            msg = st.session_state.message_queue.get_nowait()
+            if msg["type"] == "candle":
+                st.session_state.data_manager.add_candle(
+                    msg["timeframe"],
+                    msg["data"]
+                )
+    except queue.Empty:
+        pass
+    
+    # Récupérer les données du timeframe actuel
+    candles = st.session_state.data_manager.get_candles(st.session_state.current_timeframe)
+    
+    if not candles:
+        st.info("📡 Connexion au WebSocket... En attente de données...")
+        return
+    
+    # Afficher les métriques
+    last_candle = candles[-1]
+    col_m1, col_m2, col_m3 = st.columns(3)
+    
+    with col_m1:
+        st.metric(
+            "Prix Live",
+            f"${last_candle['close']:.2f}",
+            f"{last_candle['close'] - last_candle['open']:.2f}"
+        )
+    
+    with col_m2:
+        # Calculer variation 24h (approximation)
+        if len(candles) > 1:
+            first_close = candles[0]['close']
+            variation = ((last_candle['close'] - first_close) / first_close) * 100
+            st.metric("Variation", f"{variation:.2f}%")
+    
+    with col_m3:
+        st.metric("Bougies", len(candles))
+    
+    # Préparer les séries pour le graphique
+    series = [
+        {
+            "type": 'Candlestick',
+            "data": candles,
+            "options": {
+                "upColor": '#26a69a',
+                "downColor": '#ef5350',
+                "borderVisible": False,
+                "wickUpColor": '#26a69a',
+                "wickDownColor": '#ef5350'
+            }
+        }
+    ]
+    
+    # Ajouter les indicateurs activés
+    if st.session_state.indicators:
+        df = st.session_state.data_manager.get_dataframe(st.session_state.current_timeframe)
+        executor = IndicatorExecutor()
+        
+        for ind_name, ind_data in st.session_state.indicators.items():
+            if not ind_data.get('enabled', False):
+                continue
+            
+            try:
+                # Exécuter l'indicateur
+                results = executor.execute(ind_data['python_code'], df)
+                
+                # Ajouter chaque série au graphique
+                for series_name, series_data in results.items():
+                    series.append(series_data)
+            
+            except Exception as e:
+                st.error(f"Erreur dans l'indicateur '{ind_name}': {e}")
+    
+    # Configuration du graphique
+    chart_options = {
+        "layout": {
+            "textColor": 'white',
+            "background": {
+                "type": 'solid',
+                "color": '#1e222d'
+            }
+        },
+        "grid": {
+            "vertLines": {"color": "rgba(42, 46, 57, 0.6)"},
+            "horzLines": {"color": "rgba(42, 46, 57, 0.6)"}
+        },
+        "timeScale": {
+            "timeVisible": True,
+            "secondsVisible": False
+        },
+        "crosshair": {
+            "mode": 0
+        }
+    }
+    
+    charts = [
+        {
+            "chart": chart_options,
+            "series": series
+        }
+    ]
+    
+    # Rendu
+    renderLightweightCharts(
+        charts=charts,
+        key="live_chart"
+    )
+
+
+# Afficher le graphique
+render_chart()
+
+# Footer
+st.markdown("---")
+st.caption(f"🔌 Connecté à Bitget WebSocket | Symbol: {SYMBOL} | Timeframe: {st.session_state.current_timeframe}")

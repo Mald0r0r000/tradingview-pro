@@ -1,0 +1,6 @@
+streamlit
+streamlit-lightweight-charts
+pandas
+numpy
+websockets
+aiohttp
