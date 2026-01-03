@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Callable, Optional, Dict, List
 import websockets
+import aiohttp
 from collections import deque
 
 logging.basicConfig(level=logging.INFO)
@@ -14,6 +15,7 @@ class BitgetWebSocketClient:
     """
     Client WebSocket pour Bitget API v2 - Futures USDT
     Support multi-timeframe avec reconnexion automatique
+    Charge l'historique via REST API puis écoute les updates temps réel
     """
     
     # Mapping des timeframes vers les channels Bitget
@@ -33,6 +35,7 @@ class BitgetWebSocketClient:
     }
     
     WS_URL = "wss://ws.bitget.com/v2/ws/public"
+    REST_URL = "https://api.bitget.com"
     
     def __init__(self, symbol: str = "BTCUSDT", timeframe: str = "1m", 
                  on_message: Optional[Callable] = None):
@@ -54,6 +57,57 @@ class BitgetWebSocketClient:
         # Buffer pour stocker les bougies
         self.candles_buffer = deque(maxlen=500)
         
+    async def fetch_historical_candles(self):
+        """Récupère l'historique des bougies via REST API"""
+        try:
+            url = f"{self.REST_URL}/api/v2/mix/market/candles"
+            
+            params = {
+                "symbol": f"{self.symbol}USDT_UMCBL",
+                "productType": "USDT-FUTURES", 
+                "granularity": self.timeframe,
+                "limit": "500"
+            }
+            
+            logger.info(f"Fetching {self.timeframe} historical data...")
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        if data.get("code") == "00000" and data.get("data"):
+                            candles = data["data"]
+                            logger.info(f"✅ Loaded {len(candles)} historical candles")
+                            
+                            # Format: [timestamp, open, high, low, close, volume, ...]
+                            # Les données sont du plus récent au plus ancien, on reverse
+                            for candle_raw in reversed(candles):
+                                try:
+                                    candle = {
+                                        "time": int(candle_raw[0]) // 1000,
+                                        "open": float(candle_raw[1]),
+                                        "high": float(candle_raw[2]),
+                                        "low": float(candle_raw[3]),
+                                        "close": float(candle_raw[4]),
+                                        "volume": float(candle_raw[5]) if len(candle_raw) > 5 else 0
+                                    }
+                                    
+                                    self.candles_buffer.append(candle)
+                                    
+                                    if self.on_message:
+                                        self.on_message(candle)
+                                        
+                                except (IndexError, ValueError) as e:
+                                    logger.warning(f"Error parsing candle: {e}")
+                        else:
+                            logger.error(f"API error: {data.get('msg')}")
+                    else:
+                        logger.error(f"HTTP {response.status}")
+                        
+        except Exception as e:
+            logger.error(f"Failed to fetch historical data: {e}")
+    
     async def connect(self):
         """Établit la connexion WebSocket et subscribe au channel"""
         try:
@@ -170,6 +224,12 @@ class BitgetWebSocketClient:
         """Boucle principale du WebSocket avec reconnexion automatique"""
         self.running = True
         
+        # ÉTAPE 1: Charger l'historique via REST API
+        logger.info("🔄 Loading historical data...")
+        await self.fetch_historical_candles()
+        logger.info("✅ Historical data loaded, starting real-time updates...")
+        
+        # ÉTAPE 2: WebSocket pour les updates temps réel
         while self.running:
             try:
                 # Connexion
